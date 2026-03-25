@@ -4,49 +4,57 @@ local lp = Players.LocalPlayer
 
 local killCount = 0
 local lastKillTime = 0
-local killMessages = {
-    [1] = "-1 easy kill",
-    [2] = "-2 medium kill",
-    [3] = "-3 hard kill",
-    [4] = "-4 RAMPAGE",
-    [5] = "-5 MONSTERS KILL"
-}
+local killMessages = {[1]="-1 easy kill", [2]="-2 medium kill", [3]="-3 hard kill", [4]="-4 RAMPAGE", [5]="-5 MONSTERS KILL"}
 
--- Функция отправки сообщения в чат
 local function say(msg)
-    local chatRemote = ReplicatedStorage:FindFirstChild("DefaultChatSystemChatEvents") and ReplicatedStorage.DefaultChatSystemChatEvents:FindFirstChild("SayMessageRequest")
-    if chatRemote then
-        chatRemote:FireServer(msg, "All")
-    end
+    local event = ReplicatedStorage:FindFirstChild("DefaultChatSystemChatEvents")
+    if event then event.SayMessageRequest:FireServer(msg, "All") end
 end
 
-local function onKill()
-    local now = tick()
-    
-    -- Если прошло больше 6 секунд, сбрасываем счетчик
-    if now - lastKillTime > 6 then
-        killCount = 1
-    else
-        killCount = killCount + 1
-    end
-    
-    lastKillTime = now
-    
-    -- Берем сообщение из списка или пишем дефолтное, если больше 5 киллов
-    local message = killMessages[killCount] or ("-" .. killCount .. " UNSTOPPABLE!")
-    say(message)
-end
+-- Переменная, чтобы не запускать проверку убийств дважды
+local connectionActive = false
 
--- Логика отслеживания убийства (через Humanoid.Died)
-Players.PlayerAdded:Connect(function(player)
-    player.CharacterAdded:Connect(function(char)
-        local hum = char:WaitForChild("Humanoid")
-        hum.Died:Connect(function()
-            -- Проверяем, что убили именно МЫ (работает, если в игре есть CreatorTag)
-            local tag = hum:FindFirstChild("creator")
-            if tag and tag.Value == lp then
-                onKill()
+local function trackKills()
+    if connectionActive then return end
+    connectionActive = true
+    
+    local function monitor(pl)
+        pl.CharacterAdded:Connect(function(char)
+            local hum = char:WaitForChild("Humanoid", 5)
+            if hum then
+                hum.Died:Connect(function()
+                    if not _G.GazanActive then return end
+                    local tag = hum:FindFirstChild("creator")
+                    if tag and tag.Value == lp then
+                        local now = tick()
+                        if now - lastKillTime > 6 then killCount = 1 else killCount = killCount + 1 end
+                        lastKillTime = now
+                        say(killMessages[killCount] or ("-"..killCount.." GODLIKE!"))
+                    end
+                end)
             end
         end)
-    end)
-end)
+    end
+
+    for _, p in pairs(Players:GetPlayers()) do if p ~= lp then monitor(p) end end
+    Players.PlayerAdded:Connect(monitor)
+end
+
+local Toggle = Tab:CreateToggle({
+   Name = "Safe Load + AutoToxic",
+   CurrentValue = false,
+   Flag = "SafeGazan",
+   Callback = function(Value)
+      _G.GazanActive = Value
+      if Value then
+         -- Безопасная загрузка через pcall
+         task.spawn(function()
+            local s, e = pcall(function()
+               loadstring(game:HttpGet("https://raw.githubusercontent.com"))()
+            end)
+            if not s then warn("Script Error: "..e) end
+         end)
+         trackKills()
+      end
+   end,
+})
